@@ -15,26 +15,27 @@ pipeline {
             }
         }
         
-        stage('Install Chrome & Drivers') {
+        stage('Install Chrome & Chromedriver') {
             steps {
                 sh '''
-                    # Try Chromium first (lighter, in Ubuntu repos)
-                    sudo apt-get update
-                    sudo apt-get install -y chromium-browser chromium-chromedriver || true
-                    
-                    # If Chromium not found, install Chrome manually
-                    if ! command -v chromium-browser &> /dev/null && ! command -v google-chrome &> /dev/null; then
+                    # Install Chrome if not present
+                    if ! command -v google-chrome &> /dev/null; then
                         wget -q https://dl.google.com/linux/direct/google-chrome-stable_current_amd64.deb
                         sudo dpkg -i google-chrome-stable_current_amd64.deb || sudo apt-get -f install -y
                         rm -f google-chrome-stable_current_amd64.deb
                     fi
                     
-                    # Install Python packages
-                    pip3 install selenium==4.25.0 pytest==7.4.0 pytest-html==4.1.1 webdriver-manager==4.0.1 --break-system-packages
+                    # Install chromedriver if not present
+                    if ! command -v chromedriver &> /dev/null; then
+                        sudo apt-get install -y chromium-chromedriver
+                    fi
                     
-                    # Verify installation
-                    which chromium-browser || which google-chrome || echo "No Chrome found"
-                    which chromedriver || echo "No chromedriver found"
+                    # Verify
+                    google-chrome --version
+                    chromedriver --version
+                    
+                    # Install Python packages
+                    pip3 install selenium==4.25.0 pytest==7.4.0 pytest-html==4.1.1 --break-system-packages
                 '''
             }
         }
