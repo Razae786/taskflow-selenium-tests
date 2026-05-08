@@ -1,5 +1,6 @@
 import pytest
 import time
+import shutil
 from selenium import webdriver
 from selenium.webdriver.chrome.options import Options
 from selenium.webdriver.chrome.service import Service
@@ -9,7 +10,7 @@ from selenium.webdriver.support import expected_conditions as EC
 from webdriver_manager.chrome import ChromeDriverManager
 
 # ── CONFIG ──────────────────────────────────────────────────────────────────
-BASE_URL   = "http://16.54.195.112:3000"  # Taskflow frontend port
+BASE_URL   = "http://16.54.195.112:3000"
 TEST_EMAIL = "testuser@example.com"
 TEST_PASS  = "Test@1234"
 
@@ -23,9 +24,34 @@ def driver():
     opts.add_argument("--disable-gpu")
     opts.add_argument("--window-size=1920,1080")
     opts.add_argument("--disable-blink-features=AutomationControlled")
+    opts.add_argument("--disable-features=VizDisplayCompositor")
     
-    service = Service(ChromeDriverManager().install())
-    d = webdriver.Chrome(service=service, options=opts)
+    # Chromium snap paths
+    chrome_paths = [
+        '/snap/bin/chromium',
+        '/usr/bin/chromium-browser',
+        '/usr/bin/chromium',
+        '/usr/bin/google-chrome-stable',
+        '/usr/bin/google-chrome',
+    ]
+    
+    chrome_binary = None
+    for path in chrome_paths:
+        if shutil.which(path):
+            chrome_binary = path
+            break
+    
+    if chrome_binary:
+        opts.binary_location = chrome_binary
+    
+    try:
+        service = Service(ChromeDriverManager().install())
+        d = webdriver.Chrome(service=service, options=opts)
+    except Exception:
+        # Fallback: use system chromedriver directly
+        service = Service('/usr/bin/chromedriver')
+        d = webdriver.Chrome(service=service, options=opts)
+    
     d.implicitly_wait(10)
     yield d
     d.quit()
@@ -50,26 +76,22 @@ def login(driver):
 # 15 TEST CASES
 # ═══════════════════════════════════════════════════════════════════════════
 
-# TC-01: Home page loads
 def test_01_home_page_loads(driver):
     driver.get(BASE_URL)
     time.sleep(3)
     assert len(driver.page_source) > 200, "Home page is blank"
 
-# TC-02: Page title exists
 def test_02_page_title_not_empty(driver):
     driver.get(BASE_URL)
     time.sleep(2)
     assert driver.title != "", "Page title is empty"
 
-# TC-03: Login page has email field
 def test_03_login_has_email_field(driver):
     driver.get(f"{BASE_URL}/login")
     time.sleep(2)
     src = driver.page_source.lower()
     assert "email" in src or "username" in src, "No email field on login"
 
-# TC-04: Login page has password field
 def test_04_login_has_password_field(driver):
     driver.get(f"{BASE_URL}/login")
     time.sleep(2)
@@ -79,14 +101,12 @@ def test_04_login_has_password_field(driver):
     except Exception:
         pytest.skip("Password field not found")
 
-# TC-05: Login page has submit button
 def test_05_login_has_submit_button(driver):
     driver.get(f"{BASE_URL}/login")
     time.sleep(2)
     src = driver.page_source.lower()
     assert any(w in src for w in ["login", "sign in", "submit"]), "No submit button"
 
-# TC-06: Wrong credentials blocked
 def test_06_wrong_credentials_blocked(driver):
     driver.get(f"{BASE_URL}/login")
     time.sleep(2)
@@ -100,7 +120,6 @@ def test_06_wrong_credentials_blocked(driver):
     except Exception as e:
         pytest.skip(f"Could not test: {e}")
 
-# TC-07: Empty form blocked
 def test_07_empty_login_blocked(driver):
     driver.get(f"{BASE_URL}/login")
     time.sleep(2)
@@ -111,7 +130,6 @@ def test_07_empty_login_blocked(driver):
     except Exception:
         pass
 
-# TC-08: Register page accessible
 def test_08_register_page_accessible(driver):
     for path in ["/register", "/signup", "/sign-up"]:
         try:
@@ -124,44 +142,37 @@ def test_08_register_page_accessible(driver):
             continue
     pytest.skip("No registration page found")
 
-# TC-09: No 500 error on home
 def test_09_no_server_error(driver):
     driver.get(BASE_URL)
     time.sleep(2)
     src = driver.page_source.lower()
     assert "500" not in src and "internal server error" not in src, "Server error on home"
 
-# TC-10: Valid login redirects
 def test_10_valid_login_redirects(driver):
     login(driver)
     assert "/login" not in driver.current_url, f"Still on login: {driver.current_url}"
 
-# TC-11: Dashboard has task content
 def test_11_dashboard_has_tasks(driver):
     login(driver)
     src = driver.page_source.lower()
     assert any(w in src for w in ["task", "todo", "board", "list", "project"]), "No task content"
 
-# TC-12: Add task button exists
 def test_12_add_task_button_exists(driver):
     login(driver)
     src = driver.page_source.lower()
     assert any(w in src for w in ["add", "new task", "create", "+"]), "No add task button"
 
-# TC-13: Logout option exists
 def test_13_logout_exists(driver):
     login(driver)
     src = driver.page_source.lower()
     assert any(w in src for w in ["logout", "log out", "sign out"]), "No logout option"
 
-# TC-14: Mobile viewport works
 def test_14_mobile_viewport(driver):
     driver.set_window_size(375, 812)
     driver.get(BASE_URL)
     time.sleep(2)
     assert len(driver.page_source) > 100, "Broken on mobile"
 
-# TC-15: Desktop viewport works
 def test_15_desktop_viewport(driver):
     driver.set_window_size(1920, 1080)
     driver.get(BASE_URL)
