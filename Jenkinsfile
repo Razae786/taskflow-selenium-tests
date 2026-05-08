@@ -4,7 +4,7 @@ pipeline {
     }
     
     options {
-        timeout(time: 10, unit: 'MINUTES')
+        timeout(time: 15, unit: 'MINUTES')
         disableConcurrentBuilds()
     }
     
@@ -15,24 +15,21 @@ pipeline {
             }
         }
         
+        stage('Build Test Docker Image') {
+            steps {
+                sh 'docker build -t taskflow-test-image .'
+            }
+        }
+        
         stage('Run Tests in Docker Container') {
             steps {
                 sh '''
-                    # Ensure Docker image is available
-                    docker pull selenium/standalone-chrome:120.0
-                    
-                    # Run tests inside Docker container using plain docker run
-                    # The container needs python3, pip, and pytest installed
                     docker run --rm \
                         -v $(pwd):/tests \
                         -w /tests \
-                        --shm-size=2g \
                         --network=host \
-                        --entrypoint="" \
-                        selenium/standalone-chrome:120.0 \
+                        taskflow-test-image \
                         bash -c "
-                            apt-get update -qq && apt-get install -y -qq python3 python3-pip > /dev/null 2>&1
-                            pip3 install -q selenium==4.25.0 pytest==7.4.0 pytest-html==4.1.1
                             mkdir -p results
                             python3 -m pytest tests/test_taskflow.py \
                                 --junitxml=results/test-results.xml \
