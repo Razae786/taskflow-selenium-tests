@@ -18,18 +18,25 @@ pipeline {
         stage('Install Chrome & Drivers') {
             steps {
                 sh '''
-                    # Remove broken Google repo if it was added previously
-                    sudo rm -f /etc/apt/sources.list.d/google.list /etc/apt/sources.list.d/google-chrome.list
+                    # Force remove ALL Google repo files
+                    sudo rm -f /etc/apt/sources.list.d/google*.list
+                    sudo rm -f /etc/apt/sources.list.d/*google*
                     
-                    # Install Chromium from Ubuntu repos (already available)
-                    sudo apt-get update
+                    # Clean apt cache for broken repos
+                    sudo rm -rf /var/lib/apt/lists/partial/*
+                    
+                    # Update with allow-insecure to skip broken repos
+                    sudo apt-get update --allow-insecure-repositories || sudo apt-get update || true
+                    
+                    # Install Chromium from Ubuntu repos
                     sudo apt-get install -y chromium-browser chromium-chromedriver || true
                     
-                    # Install Python test dependencies
+                    # Install Python dependencies
                     pip3 install selenium==4.25.0 pytest==7.4.0 pytest-html==4.1.1 --break-system-packages
                     
                     # Verify
-                    chromedriver --version || echo "chromedriver not found but continuing"
+                    which chromedriver || echo "chromedriver not in PATH"
+                    which chromium-browser || which chromium || echo "chromium not found"
                 '''
             }
         }
@@ -61,7 +68,7 @@ pipeline {
                 def results = sh(script: "cat results/test-output.txt 2>/dev/null || echo 'No test output'", returnStdout: true).trim()
                 
                 emailext(
-                    to: "${committer}, qasimalik@gmail.com",
+                    to: "${committer}",
                     subject: "Taskflow Selenium Tests - Build #${env.BUILD_NUMBER}",
                     body: """
 Test Results for Taskflow
