@@ -4,7 +4,7 @@ pipeline {
     }
     
     options {
-        timeout(time: 5, unit: 'MINUTES')
+        timeout(time: 10, unit: 'MINUTES')
         disableConcurrentBuilds()
     }
     
@@ -15,24 +15,30 @@ pipeline {
             }
         }
         
-        stage('Install Chrome & Drivers') {
+        stage('Run Tests in Docker Container') {
             steps {
                 sh '''
-                    sudo apt-get update
-                    sudo apt-get install -y google-chrome-stable chromium-browser chromium-chromedriver || true
-                    pip3 install selenium==4.25.0 pytest==7.4.0 pytest-html==4.1.1 webdriver-manager==4.0.1 --break-system-packages
-                '''
-            }
-        }
-        
-        stage('Run Tests') {
-            steps {
-                sh '''
-                    mkdir -p results
-                    python3 -m pytest tests/test_taskflow.py \
-                        --junitxml=results/test-results.xml \
-                        --html=results/report.html \
-                        -v --tb=short 2>&1 | tee results/test-output.txt || true
+                    # Ensure Docker image is available
+                    docker pull selenium/standalone-chrome:120.0
+                    
+                    # Run tests inside Docker container using plain docker run
+                    # The container needs python3, pip, and pytest installed
+                    docker run --rm \
+                        -v $(pwd):/tests \
+                        -w /tests \
+                        --shm-size=2g \
+                        --network=host \
+                        --entrypoint="" \
+                        selenium/standalone-chrome:120.0 \
+                        bash -c "
+                            apt-get update -qq && apt-get install -y -qq python3 python3-pip > /dev/null 2>&1
+                            pip3 install -q selenium==4.25.0 pytest==7.4.0 pytest-html==4.1.1
+                            mkdir -p results
+                            python3 -m pytest tests/test_taskflow.py \
+                                --junitxml=results/test-results.xml \
+                                --html=results/report.html \
+                                -v --tb=short 2>&1 | tee results/test-output.txt || true
+                        "
                 '''
             }
         }
