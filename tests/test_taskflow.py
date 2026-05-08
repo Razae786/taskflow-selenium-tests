@@ -7,7 +7,6 @@ from selenium.webdriver.chrome.service import Service
 from selenium.webdriver.common.by import By
 from selenium.webdriver.support.ui import WebDriverWait
 from selenium.webdriver.support import expected_conditions as EC
-from webdriver_manager.chrome import ChromeDriverManager
 
 # ── CONFIG ──────────────────────────────────────────────────────────────────
 BASE_URL   = "http://16.54.195.112:3000"
@@ -25,32 +24,19 @@ def driver():
     opts.add_argument("--window-size=1920,1080")
     opts.add_argument("--disable-blink-features=AutomationControlled")
     opts.add_argument("--disable-features=VizDisplayCompositor")
+    opts.add_argument("--remote-debugging-port=9222")
     
-    # Chromium snap paths
-    chrome_paths = [
-        '/snap/bin/chromium',
-        '/usr/bin/chromium-browser',
-        '/usr/bin/chromium',
-        '/usr/bin/google-chrome-stable',
-        '/usr/bin/google-chrome',
-    ]
+    # Use system chromedriver directly (don't use webdriver_manager)
+    chromedriver_path = shutil.which('chromedriver') or '/usr/bin/chromedriver'
     
-    chrome_binary = None
-    for path in chrome_paths:
-        if shutil.which(path):
-            chrome_binary = path
-            break
+    # Use chromium from snap with proper options
+    chromium_path = shutil.which('chromium') or shutil.which('chromium-browser') or shutil.which('google-chrome-stable')
     
-    if chrome_binary:
-        opts.binary_location = chrome_binary
+    if chromium_path:
+        opts.binary_location = chromium_path
     
-    try:
-        service = Service(ChromeDriverManager().install())
-        d = webdriver.Chrome(service=service, options=opts)
-    except Exception:
-        # Fallback: use system chromedriver directly
-        service = Service('/usr/bin/chromedriver')
-        d = webdriver.Chrome(service=service, options=opts)
+    service = Service(chromedriver_path)
+    d = webdriver.Chrome(service=service, options=opts)
     
     d.implicitly_wait(10)
     yield d
