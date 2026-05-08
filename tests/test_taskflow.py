@@ -1,6 +1,7 @@
 import pytest
 import time
 import shutil
+import subprocess
 from selenium import webdriver
 from selenium.webdriver.chrome.options import Options
 from selenium.webdriver.chrome.service import Service
@@ -17,26 +18,60 @@ TEST_PASS  = "Test@1234"
 @pytest.fixture(scope="function")
 def driver():
     opts = Options()
-    opts.add_argument("--headless")
+    opts.add_argument("--headless=new")
     opts.add_argument("--no-sandbox")
     opts.add_argument("--disable-dev-shm-usage")
     opts.add_argument("--disable-gpu")
     opts.add_argument("--window-size=1920,1080")
     opts.add_argument("--disable-blink-features=AutomationControlled")
     opts.add_argument("--disable-features=VizDisplayCompositor")
-    opts.add_argument("--remote-debugging-port=9222")
+    opts.add_argument("--disable-software-rasterizer")
+    opts.add_argument("--disable-extensions")
+    opts.add_argument("--disable-background-networking")
+    opts.add_argument("--disable-background-timer-throttling")
+    opts.add_argument("--disable-backgrounding-occluded-windows")
+    opts.add_argument("--disable-renderer-backgrounding")
+    opts.add_argument("--disable-features=IsolateOrigins,site-per-process")
+    opts.add_argument("--disable-site-isolation-trials")
     
-    # Use system chromedriver directly (don't use webdriver_manager)
+    # CRITICAL: For snap Chromium, use --remote-debugging-pipe instead of port
+    opts.add_argument("--remote-debugging-pipe")
+    
+    # Find chromedriver
     chromedriver_path = shutil.which('chromedriver') or '/usr/bin/chromedriver'
     
-    # Use chromium from snap with proper options
-    chromium_path = shutil.which('chromium') or shutil.which('chromium-browser') or shutil.which('google-chrome-stable')
+    # Find Chrome/Chromium binary - prefer non-snap if available
+    chrome_paths = [
+        '/usr/bin/google-chrome-stable',
+        '/usr/bin/google-chrome',
+        '/usr/bin/chromium-browser',
+        '/usr/bin/chromium',
+        '/snap/bin/chromium',
+    ]
     
-    if chromium_path:
-        opts.binary_location = chromium_path
+    chrome_binary = None
+    for path in chrome_paths:
+        if shutil.which(path):
+            chrome_binary = path
+            break
+    
+    if chrome_binary:
+        opts.binary_location = chrome_binary
     
     service = Service(chromedriver_path)
-    d = webdriver.Chrome(service=service, options=opts)
+    
+    try:
+        d = webdriver.Chrome(service=service, options=opts)
+    except Exception as e:
+        # Fallback: try with minimal options
+        opts2 = Options()
+        opts2.add_argument("--headless=new")
+        opts2.add_argument("--no-sandbox")
+        opts2.add_argument("--disable-dev-shm-usage")
+        if chrome_binary:
+            opts2.binary_location = chrome_binary
+        service2 = Service(chromedriver_path)
+        d = webdriver.Chrome(service=service2, options=opts2)
     
     d.implicitly_wait(10)
     yield d
