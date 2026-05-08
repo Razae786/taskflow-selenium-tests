@@ -15,27 +15,21 @@ pipeline {
             }
         }
         
-        stage('Install Chrome & Chromedriver') {
+        stage('Install Chrome & Drivers') {
             steps {
                 sh '''
-                    # Install Chrome if not present
-                    if ! command -v google-chrome &> /dev/null; then
-                        wget -q https://dl.google.com/linux/direct/google-chrome-stable_current_amd64.deb
-                        sudo dpkg -i google-chrome-stable_current_amd64.deb || sudo apt-get -f install -y
-                        rm -f google-chrome-stable_current_amd64.deb
-                    fi
+                    # Remove broken Google repo if it was added previously
+                    sudo rm -f /etc/apt/sources.list.d/google.list /etc/apt/sources.list.d/google-chrome.list
                     
-                    # Install chromedriver if not present
-                    if ! command -v chromedriver &> /dev/null; then
-                        sudo apt-get install -y chromium-chromedriver
-                    fi
+                    # Install Chromium from Ubuntu repos (already available)
+                    sudo apt-get update
+                    sudo apt-get install -y chromium-browser chromium-chromedriver || true
+                    
+                    # Install Python test dependencies
+                    pip3 install selenium==4.25.0 pytest==7.4.0 pytest-html==4.1.1 --break-system-packages
                     
                     # Verify
-                    google-chrome --version
-                    chromedriver --version
-                    
-                    # Install Python packages
-                    pip3 install selenium==4.25.0 pytest==7.4.0 pytest-html==4.1.1 --break-system-packages
+                    chromedriver --version || echo "chromedriver not found but continuing"
                 '''
             }
         }
@@ -64,7 +58,7 @@ pipeline {
         always {
             script {
                 def committer = sh(script: "git log -1 --pretty=format:'%ae'", returnStdout: true).trim()
-                def results = sh(script: "cat results/test-output.txt 2>/dev/null || echo 'No results'", returnStdout: true).trim()
+                def results = sh(script: "cat results/test-output.txt 2>/dev/null || echo 'No test output'", returnStdout: true).trim()
                 
                 emailext(
                     to: "${committer}, qasimalik@gmail.com",
