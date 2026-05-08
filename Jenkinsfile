@@ -18,25 +18,9 @@ pipeline {
         stage('Install Chrome & Drivers') {
             steps {
                 sh '''
-                    # Force remove ALL Google repo files
-                    sudo rm -f /etc/apt/sources.list.d/google*.list
-                    sudo rm -f /etc/apt/sources.list.d/*google*
-                    
-                    # Clean apt cache for broken repos
-                    sudo rm -rf /var/lib/apt/lists/partial/*
-                    
-                    # Update with allow-insecure to skip broken repos
-                    sudo apt-get update --allow-insecure-repositories || sudo apt-get update || true
-                    
-                    # Install Chromium from Ubuntu repos
-                    sudo apt-get install -y chromium-browser chromium-chromedriver || true
-                    
-                    # Install Python dependencies
-                    pip3 install selenium==4.25.0 pytest==7.4.0 pytest-html==4.1.1 --break-system-packages
-                    
-                    # Verify
-                    which chromedriver || echo "chromedriver not in PATH"
-                    which chromium-browser || which chromium || echo "chromium not found"
+                    sudo apt-get update
+                    sudo apt-get install -y google-chrome-stable chromium-browser chromium-chromedriver || true
+                    pip3 install selenium==4.25.0 pytest==7.4.0 pytest-html==4.1.1 webdriver-manager==4.0.1 --break-system-packages
                 '''
             }
         }
@@ -44,7 +28,6 @@ pipeline {
         stage('Run Tests') {
             steps {
                 sh '''
-                    export PATH=$PATH:/home/ubuntu/.local/bin
                     mkdir -p results
                     python3 -m pytest tests/test_taskflow.py \
                         --junitxml=results/test-results.xml \
@@ -57,6 +40,14 @@ pipeline {
         stage('Publish Results') {
             steps {
                 junit 'results/test-results.xml'
+                publishHTML([
+                    allowMissing: false,
+                    alwaysLinkToLastBuild: true,
+                    keepAll: true,
+                    reportDir: 'results',
+                    reportFiles: 'report.html',
+                    reportName: 'Selenium Test Report'
+                ])
             }
         }
     }
@@ -64,22 +55,44 @@ pipeline {
     post {
         always {
             script {
-                def committer = sh(script: "git log -1 --pretty=format:'%ae'", returnStdout: true).trim()
-                def results = sh(script: "cat results/test-output.txt 2>/dev/null || echo 'No test output'", returnStdout: true).trim()
+                def committerEmail = sh(script: "git log -1 --pretty=format:'%ae'", returnStdout: true).trim()
+                def committerName = sh(script: "git log -1 --pretty=format:'%an'", returnStdout: true).trim()
+                def results = sh(script: "cat results/test-output.txt 2>/dev/null || echo 'No test output available'", returnStdout: true).trim()
+                def buildStatus = currentBuild.currentResult ?: 'UNKNOWN'
                 
                 emailext(
-                    to: "${committer}",
-                    subject: "Taskflow Selenium Tests - Build #${env.BUILD_NUMBER}",
+                    subject: "${env.JOB_NAME} - Build #${env.BUILD_NUMBER} - ${buildStatus}",
                     body: """
-Test Results for Taskflow
-=========================
-Build: #${env.BUILD_NUMBER}
-Triggered by: ${committer}
+Build Notification
+==================
+Project: ${env.JOB_NAME}
+Build Number: #${env.BUILD_NUMBER}
+Status: ${buildStatus}
+Triggered By: ${committerName} <${committerEmail}>
+Build URL: ${env.BUILD_URL}
 
+Test Results:
 ${results}
 
-Build URL: ${env.BUILD_URL}
-"""
+---
+This is an automated message from Jenkins.
+""",
+                    to: "${committerEmail}, razaeilyas123@gmail.com",
+                    from: "jenkins@taskflow-ci.com",
+                    replyTo: "razaeilyas123@gmail.com",
+                    mimeType: 'text/plain'
+                )
+            }
+        }
+        
+        failure {
+            script {
+                def committerEmail = sh(script: "git log -1 --pretty=format:'%ae'", returnStdout: true).trim()
+                emailext(
+                    subject: "FAILED: ${env.JOB_NAME} - Build #${env.BUILD_NUMBER}",
+                    body: "Build FAILED. Check logs at: ${env.BUILD_URL}console",
+                    to: "${committerEmail}, razaeilyas123@gmail.com",
+                    from: "jenkins@taskflow-ci.com"
                 )
             }
         }
