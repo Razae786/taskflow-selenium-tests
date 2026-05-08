@@ -4,7 +4,7 @@ pipeline {
     }
     
     options {
-        timeout(time: 10, unit: 'MINUTES')
+        timeout(time: 15, unit: 'MINUTES')
         disableConcurrentBuilds()
     }
     
@@ -15,24 +15,28 @@ pipeline {
             }
         }
         
-        stage('Install Chrome & Drivers') {
+        stage('Build Test Docker Image') {
             steps {
-                sh '''
-                    sudo apt-get update
-                    sudo apt-get install -y google-chrome-stable chromium-browser chromium-chromedriver || true
-                    pip3 install selenium==4.25.0 pytest==7.4.0 pytest-html==4.1.1 webdriver-manager==4.0.1 --break-system-packages
-                '''
+                sh 'docker build -t taskflow-test-image .'
             }
         }
         
-        stage('Run Tests') {
+        stage('Run Tests in Docker Container') {
             steps {
                 sh '''
-                    mkdir -p results
-                    python3 -m pytest tests/test_taskflow.py \
-                        --junitxml=results/test-results.xml \
-                        --html=results/report.html \
-                        -v --tb=short 2>&1 | tee results/test-output.txt || true
+                    docker run --rm \
+                        -v $(pwd):/tests \
+                        -w /tests \
+                        --shm-size=2g \
+                        --network=host \
+                        taskflow-test-image \
+                        bash -c "
+                            mkdir -p results
+                            python3 -m pytest tests/test_taskflow.py \
+                                --junitxml=results/test-results.xml \
+                                --html=results/report.html \
+                                -v --tb=short 2>&1 | tee results/test-output.txt || true
+                        "
                 '''
             }
         }
